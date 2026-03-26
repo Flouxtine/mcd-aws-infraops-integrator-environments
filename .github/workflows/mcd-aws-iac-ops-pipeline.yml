@@ -61,6 +61,7 @@ env:
   KICS_RESULT: "kics-results.all"
   TFSEC_RESULT: "tfsec-results.json"
   APPROVE_USER: Flouxtine
+
 jobs:
   terragrunt:
     name: Terragrunt Plan with OpenTofu
