@@ -17,6 +17,7 @@ on:
           - bossfoundation
           - deltaglobal-coreserv
           - deltaglobal-orderserv
+          - zhangzh-test
       env-folder:
         description: "Target folder to run Terragrunt in"
         required: true
