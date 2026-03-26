@@ -1,6 +1,6 @@
 module "rds" {
   for_each                        = var.create_rds_config
-  source                          = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-rds-instance?ref=main"
+  source                          = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-rds-instance?ref=main"
   engine                          = try(each.value.engine, null)
   engine_version                  = try(each.value.engine_version, null)
   username                        = try(each.value.username, null)

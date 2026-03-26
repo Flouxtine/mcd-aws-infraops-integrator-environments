@@ -1,5 +1,5 @@
 module "aws_key_pair" {
-  source              = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-key-pair"
+  source              = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-key-pair"
   for_each            = var.create_aws_key_pair_config
   create_aws_key_pair = each.value.create_aws_key_pair
   public_key          = each.value.public_key

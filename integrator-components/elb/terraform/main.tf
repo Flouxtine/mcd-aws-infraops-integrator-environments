@@ -1,5 +1,5 @@
 module "this" {
-  source                           = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-elb?ref=main"
+  source                           = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-elb?ref=main"
   for_each                         = local.create_lb_config
   create_aws_lb                    = length(local.create_lb_config) > 0 ? true : false
   load_balancer_name               = each.value.load_balancer_name
@@ -22,7 +22,7 @@ module "this" {
 }
 
 module "listen" {
-  source                          = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-elb?ref=main"
+  source                          = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-elb?ref=main"
   for_each                        = local.create_lb_listener_config
   create_aws_lb_listener          = true
   load_balancer_arn               = try(each.value.load_balancer_arn, module.this[each.value.load_balancer_name].load_balancer_arn)
@@ -35,6 +35,6 @@ module "listen" {
 }
 
 module "target_group" {
-  source        = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-elb?ref=main"
+  source        = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-elb?ref=main"
   target_groups = local.create_lb_target_group_config
 }

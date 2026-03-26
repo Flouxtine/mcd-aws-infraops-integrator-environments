@@ -1,5 +1,5 @@
 module "this" {
-  source                      = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-dynamodb?ref=main"
+  source                      = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-dynamodb?ref=main"
   for_each                    = var.create_terraform-aws-dynamodb_config
   create_aws_dynamodb_table   = each.value.create_aws_dynamodb_table
   name                        = each.value.name

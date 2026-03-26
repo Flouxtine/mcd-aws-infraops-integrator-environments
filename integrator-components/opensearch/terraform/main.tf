@@ -1,6 +1,6 @@
 module "opensearch" {
   for_each = var.create_opensearch_config
-  source   = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-opensearch?ref=main"
+  source   = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-opensearch?ref=main"
 
   # 必需参数
   domain_name = each.value.domain_name

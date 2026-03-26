@@ -1,5 +1,5 @@
 module "this" {
-  source                                                 = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-transit-gateway?ref=main"
+  source                                                 = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-transit-gateway?ref=main"
   for_each                                               = var.create_resource_config
   create_aws_ec2_transit_gateway                         = each.value.create_aws_ec2_transit_gateway
   amazon_side_asn                                        = try(each.value.amazon_side_asn, null)

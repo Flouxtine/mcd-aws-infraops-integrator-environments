@@ -1,5 +1,5 @@
 module "eks" {
-  source           = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-eks?ref=main"
+  source           = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-eks?ref=main"
   for_each         = var.create_eks_config
   cluster_name     = each.value.cluster_name
   cluster_role_arn = each.value.cluster_role_arn

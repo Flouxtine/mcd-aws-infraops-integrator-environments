@@ -1,5 +1,5 @@
 module "this" {
-  source                                     = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-direct-connect?ref=main"
+  source                                     = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-direct-connect?ref=main"
   for_each                                   = var.create_resource_config
   create_aws_dx_gateway                      = each.value.create_aws_dx_gateway
   name                                       = each.value.name

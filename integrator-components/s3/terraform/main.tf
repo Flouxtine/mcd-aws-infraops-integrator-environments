@@ -1,5 +1,5 @@
 module "this" {
-  source                                                                   = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-s3?ref=main"
+  source                                                                   = "git::ssh://git@github-flouxtine/Flouxtine/aws-terraform-base-module.git//terraform-aws-s3?ref=main"
   for_each                                                                 = var.create_terraform-aws-s3_config
   create_aws_s3_bucket                                                     = each.value.create_aws_s3_bucket
   bucket                                                                   = each.value.bucket

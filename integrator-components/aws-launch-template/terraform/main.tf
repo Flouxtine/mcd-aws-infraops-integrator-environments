@@ -1,5 +1,5 @@
 module "aws_launch_template" {
-  source                               = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-launch-template"
+  source                               = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-launch-template"
   for_each                             = var.create_aws_launch_template_config
   create_aws_launch_template           = each.value.create_aws_launch_template
   name                                 = each.value.name

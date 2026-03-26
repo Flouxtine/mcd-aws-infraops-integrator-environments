@@ -1,5 +1,5 @@
 module "aws_security_group_rule" {
-  source                         = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-security-group?ref=main"
+  source                         = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-security-group?ref=main"
   for_each                       = var.create_aws_security_group_rule_config
   create_aws_security_group_rule = each.value.create_aws_security_group_rule
   to_port                        = each.value.to_port
@@ -15,7 +15,7 @@ module "aws_security_group_rule" {
   timeouts                       = try(each.value.timeouts, null)
 }
 module "aws_security_group" {
-  source                                    = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-security-group?ref=main"
+  source                                    = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-security-group?ref=main"
   for_each                                  = var.create_aws_security_group_config
   create_aws_security_group                 = each.value.create_aws_security_group
   aws_security_group_name                   = try(each.value.name, null)
@@ -26,7 +26,7 @@ module "aws_security_group" {
   aws_security_group_timeouts               = try(each.value.timeouts, null)
 }
 module "aws_vpc_endpoint_security_group_association" {
-  source                                                                  = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-security-group?ref=main"
+  source                                                                  = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-security-group?ref=main"
   for_each                                                                = var.create_aws_vpc_endpoint_security_group_association_config
   create_aws_vpc_endpoint_security_group_association                      = each.value.create_aws_vpc_endpoint_security_group_association
   aws_vpc_endpoint_security_group_association_security_group_id           = each.value.security_group_id == null ? module.aws_security_group[each.value.security_group_id_depend_key].aws_security_group_id : each.value.security_group_id

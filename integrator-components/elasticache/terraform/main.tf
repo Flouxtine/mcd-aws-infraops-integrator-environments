@@ -1,6 +1,6 @@
 module "redis" {
   for_each                   = var.create_elasticache_map
-  source                     = "git::ssh://git@github.com/AWS-TEST/aws-terraform-base-module.git//terraform-aws-elasticache?ref=main"
+  source                     = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-elasticache?ref=main"
   create                     = each.value.create
   create_replication_group   = each.value.create_replication_group
   replication_group_id       = each.value.replication_group_id
