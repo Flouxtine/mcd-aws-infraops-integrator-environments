@@ -205,31 +205,17 @@ jobs:
     needs: terragrunt
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
+    environment: production-approval # 👈 关联第一个环境
     permissions:
       id-token: write
       contents: read
-      issues: write
-      pull-requests: read
+      # 注意：Environments 审批不需要 issues 或 pull-requests 权限，这里可移除
+      # 保留需要的权限，例如部署所需
     steps:
-      - name: Wait for first approval
-        uses: trstringer/manual-approval@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
-        with:
-          secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPROVERS_FIRST }} # 第一组审批人（逗号分隔）
-          minimum-approvals: 1
-          issue-title: "【第一层审批】AWS-IAC-环境 ${{ env.WORKDIR }} 部署审批请求"
-          issue-body: |
-            **部署信息:**
-            - 提交 SHA: ${{ github.sha }}
-            - 提交信息: ${{ github.event.head_commit.message }}
-            - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            **请第一位审批人批准此次部署。**
-            注意：本流程需要**两位不同**的审批人，第一层批准后请通知第二位审批人进行第二层审批。
-          issue-labels: "deployment,approval-needed"
-          timeout: 1d
+      # 此任务本身不需要任何操作，因为环境审批已由 GitHub 自动处理
+      # 可以添加一个简单的打印信息表示正在等待审批
+      - name: 等待第一层审批通过
+        run: echo "等待审批中，请前往 Actions 页面或查看邮箱通知"
 
   # 第二层审批
   approval-2:
@@ -237,31 +223,13 @@ jobs:
     needs: approval-1
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
+    environment: approval-second # 👈 关联第二个环境
     permissions:
       id-token: write
       contents: read
-      issues: write
-      pull-requests: read
     steps:
-      - name: Wait for second approval
-        uses: trstringer/manual-approval@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
-        with:
-          secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPROVERS_SECOND }} # 第二组审批人（逗号分隔）
-          minimum-approvals: 1
-          issue-title: "【第二层审批】AWS-IAC-环境 ${{ env.WORKDIR }} 部署审批请求"
-          issue-body: |
-            **部署信息:**
-            - 提交 SHA: ${{ github.sha }}
-            - 提交信息: ${{ github.event.head_commit.message }}
-            - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            **请第二位审批人批准此次部署。**
-            请确认第一位审批人已经批准，并再次核对变更内容。
-          issue-labels: "deployment,approval-needed"
-          timeout: 1d
+      - name: 等待第二层审批通过
+        run: echo "等待审批中，请前往 Actions 页面或查看邮箱通知"
 
   apply:
     name: Terragrunt Apply with OpenTofu (Using Approved Plan)
