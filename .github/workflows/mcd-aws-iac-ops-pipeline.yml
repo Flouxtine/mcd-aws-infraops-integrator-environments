@@ -54,7 +54,7 @@ env:
 
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_IAM_ROLE: ${{ secrets.AWS_IAM_ROLE }}
+  # AWS_IAM_ROLE: ${{ secrets.AWS_IAM_ROLE }}
 
   TERRAGRUNT_TFPATH: /usr/local/bin/tofu
   OPENTOFU_VERSION: "1.6.2"
@@ -62,7 +62,7 @@ env:
 
   KICS_RESULT: "kics-results.all"
   TFSEC_RESULT: "tfsec-results.json"
-  APPROVE_USER: CN-anchnettiantod_mcdcn,CN-davidzhao_mcdcn,CN-jingfeng_mcdcn
+  APPROVE_USER: Zane
 
 jobs:
   terragrunt:
@@ -83,11 +83,6 @@ jobs:
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           # role-to-assume: ${{ env.AWS_IAM_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Debug AWS Identity
-        run: |
-          aws sts get-caller-identity
-          aws s3 ls s3://my-bucket-zhangzh-uat/ || echo "Cannot list bucket"
 
       - name: Install Opentofu and Terragrunt
         run: |
