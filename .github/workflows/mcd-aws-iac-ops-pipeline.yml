@@ -50,7 +50,8 @@ env:
   TF_INPUT: false
   WORKDIR: integrator-environments/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{inputs.aws-region}}/${{ inputs.target-folder }}
   AWS_REGION: ${{ inputs.aws-region }}
-
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   TERRAGRUNT_TFPATH: /usr/local/bin/tofu
   OPENTOFU_VERSION: "1.6.2"
   TERRAGRUNT_VERSION: "0.54.8"
