@@ -60,9 +60,7 @@ env:
 
   KICS_RESULT: "kics-results.all"
   TFSEC_RESULT: "tfsec-results.json"
-  APPROVERS_FIRST: "Flouxtine" # 第一层审批人，逗号分隔
-  APPROVERS_SECOND: "Flouxtine" # 第二层审批人
-
+  
 jobs:
   terragrunt:
     name: Terragrunt Plan with OpenTofu
