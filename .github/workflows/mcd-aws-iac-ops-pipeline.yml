@@ -17,7 +17,6 @@ on:
           - bossfoundation
           - deltaglobal-coreserv
           - deltaglobal-orderserv
-          - zhangzh-test
       env-folder:
         description: "Target folder to run Terragrunt in"
         required: true
@@ -28,340 +27,293 @@ on:
           - dev
           - sit
           - uat
-          - dev
           - prod
           - test
       target-folder:
-        description: "The target directory to be run, for example: this directory dmz/infra/ap-east-1/{dx,natgw,tgw}, there are 3 folders. To run dx, fill in dx. Multiple folders are not supported. If it is empty, all directories under ap-east-1 will be run."
+        description: "Target directory (e.g. dx). Empty = run all under ap-east-1"
         required: false
         default: ""
       aws-region:
-        description: "AWS 所在的地域"
+        description: "AWS Region"
         required: true
         default: "ap-east-1"
         type: choice
         options:
           - ap-east-1
       module-name:
-        description: "The name of the terraform module to run; for example, if it is module.this, fill in this. Multiple names are separated by commas (,)."
+        description: "Terraform module name (comma separated)"
         required: false
         default: ""
 
+# 全局环境变量（精简+修复路径）
 env:
   TF_INPUT: false
-  WORKDIR: integrator-environments/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{inputs.aws-region}}/${{ inputs.target-folder }}
+  BASE_DIR: integrator-environments
+  WORKDIR: ${{ env.BASE_DIR }}/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{ inputs.aws-region }}/${{ inputs.target-folder }}
   AWS_REGION: ${{ inputs.aws-region }}
-
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_IAM_ROLE: ${{ secrets.AWS_IAM_ROLE }}
 
-  TERRAGRUNT_TFPATH: /usr/local/bin/tofu
   OPENTOFU_VERSION: "1.6.2"
   TERRAGRUNT_VERSION: "0.54.8"
+  TERRAGRUNT_TFPATH: /usr/local/bin/tofu
 
-  KICS_RESULT: "kics-results.all"
-  TFSEC_RESULT: "tfsec-results.json"
-  APPROVE_USER: "Flouxtine"
-  # 第二组审批人（可复用第一组或单独定义）
-  APPROVE_USER_2: "CN-anchnettiantod_mcdcn"
+  SCAN_KICS: "kics-results.all"
+  SCAN_TFSEC: "tfsec-results.json"
+  BUCKET_ARTIFACT: "terraform-backend-state-ap-east-1"
+  RUN_ID: ${{ github.run_id }}
+
+  # 审批人配置（双审批）
+  APPROVER_SECURITY: "CN-anchnettiantod_mcdcn@example.com"
+  APPROVER_DEPLOY: "CN-davidzhao_mcdcn@example.com,CN-jingfeng_mcdcn@example.com"
+  APPROVE_TIMEOUT: "1d"
 
 jobs:
-  # =========================== 代码扫描阶段 ===========================
-  code_review:
-    name: Code Review - Security Scan
+  # 阶段1：初始化 + Plan + 安全扫描
+  terragrunt-plan:
+    name: Terragrunt Plan & Security Scan
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+    outputs:
+      exit_code: ${{ steps.plan.outputs.exit_code }}
+      tf_workdir: ${{ steps.plan.outputs.tf_workdir }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           role-to-assume: ${{ env.AWS_IAM_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: KICS Scan
-        continue-on-error: true
+      # 安装依赖（复用函数，无冗余）
+      - name: Install OpenTofu + Terragrunt
         run: |
-          docker run -t -v "./":/data checkmarx/kics:latest scan -p /data/ --report-formats all -e "**/.terraform/providers/*"  -o "/data/${{ env.KICS_RESULT }}"
+          wget -q https://github.com/opentofu/opentofu/releases/download/v${{ env.OPENTOFU_VERSION }}/tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
+          unzip -q tofu_*.zip -d /usr/local/bin/ && chmod +x /usr/local/bin/tofu && rm -f tofu_*.zip
+          curl -sL https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TERRAGRUNT_VERSION }}/terragrunt_linux_amd64 -o /usr/local/bin/terragrunt
+          chmod +x /usr/local/bin/terragrunt
 
-      - name: Tfsec Scan
-        uses: aquasecurity/tfsec-action@v1.0.0
-        with:
-          format: json
-          soft_fail: false
-          additional_args: "--out ${{ env.TFSEC_RESULT }}"
-          working_dir: ${{ env.WORKDIR }}
+      - name: Install Rclone
+        uses: AnimMouse/setup-rclone@v1
 
-      # ✅ 新增：安装 rclone
-      - name: Install rclone
+      - name: Configure SSH for Git Modules
         run: |
-          curl https://rclone.org/install.sh | sudo bash
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PUBLIC }}" > ~/.ssh/id_rsa.pub
+          chmod 600 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-      - name: Upload scan results to S3
-        env:
-          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
-          rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ secrets.S3_BUCKET }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
-          rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ secrets.S3_BUCKET }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
-
-  # =========================== Plan 阶段 ===========================
-  plan:
-    name: Terragrunt Plan with OpenTofu
-    runs-on: ubuntu-latest
-    needs: [code_review] # 等待扫描完成（扫描失败不阻塞，但可根据需要修改）
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          role-to-assume: ${{ env.AWS_IAM_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Install Opentofu and Terragrunt
-        run: |
-          wget https://github.com/opentofu/opentofu/releases/download/v${{ env.OPENTOFU_VERSION }}/tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
-          unzip tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip -d /usr/local/bin/
-          chmod +x /usr/local/bin/tofu
-          rm tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
-
-          curl -L https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TERRAGRUNT_VERSION }}/terragrunt_linux_amd64 -o terragrunt
-          chmod +x terragrunt
-          sudo mv terragrunt /usr/local/bin/
-
+      # 核心Plan步骤（修复原有逻辑Bug）
       - name: Terragrunt Plan
         id: plan
         working-directory: ${{ env.WORKDIR }}
         run: |
           export TERRAGRUNT_TF_BINARY=tofu
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          echo "${{ secrets.SSH_PUBLIC }}" > ~/.ssh/id_rsa.pub
-          chmod 600 ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa.pub
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          EXIT_CODE=0
 
-          if [[ "${{ inputs.target-folder }}" == '' ]]; then
-            # 多模块：运行 plan-all，并将每个模块的 plan 文件集中到 plan-output/
-            terragrunt plan-all -input=false -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
-            find . -name "plan.tfplan" -exec dirname {} \; | while read -r dir; do
+          if [[ -z "${{ inputs.target-folder }}" ]]; then
+            terragrunt plan-all -input=false -out=plan.tfplan -detailed-exitcode || EXIT_CODE=$?
+            find . -name "plan.tfplan" -exec dirname {} \; | while read dir; do
               pdir=$(echo "$dir" | cut -d'/' -f2)
-              mkdir -p ./plan-output/$pdir
-              cp $dir/plan.tfplan ./plan-output/$pdir/plan.tfplan
-              cd $pdir && terragrunt show -json ./plan.tfplan > ../plan-output/$pdir/plan.json && cd ..
-            done || echo "exit_code=$?" >> $GITHUB_OUTPUT
+              mkdir -p ../plan-output/$pdir
+              (cd $dir && terragrunt show -json plan.tfplan > ../../plan-output/$pdir/plan.json)
+            done
           else
-            # 单模块
-            mkdir -p ./plan-output
-            if [[ "${{ inputs.module-name }}" == '' ]]; then
-              terragrunt plan -input=false -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
+            mkdir -p plan-output
+            if [[ -z "${{ inputs.module-name }}" ]]; then
+              terragrunt plan -input=false -out=plan.tfplan -detailed-exitcode || EXIT_CODE=$?
             else
-              target=$(echo "${{ inputs.module-name }}" | awk -F',' '{ for(i=1;i<=NF;i++) printf "--target=module.%s ", $i }')
-              terragrunt plan -input=false $target -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
+              target=$(echo "${{ inputs.module-name }}" | tr ',' '\n' | sed 's/^/--target=module./' | tr '\n' ' ')
+              terragrunt plan -input=false $target -out=plan.tfplan -detailed-exitcode || EXIT_CODE=$?
             fi
-            echo "tf_workdir=$(terragrunt terragrunt-info | grep WorkingDir | cut -d '"' -f  4  | awk -F'/.terragrunt-cache' '{print $2}')" >> $GITHUB_ENV
-            terragrunt show -json ./plan.tfplan > ./plan-output/plan.json
-            cp ./plan.tfplan ./plan-output/plan.tfplan
+            terragrunt show -json plan.tfplan > plan-output/plan.json
+            TF_WD=$(terragrunt terragrunt-info | grep WorkingDir | cut -d'"' -f4 | awk -F'/.terragrunt-cache' '{print $2}')
+            echo "tf_workdir=$TF_WD" >> $GITHUB_OUTPUT
           fi
-      - name: Install rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
-      - name: Upload Plan to S3 (Backup)
-        env:
-          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          BUCKET_NAME: "terraform-backend-state-ap-east-1"
+      # 安全扫描
+      - name: KICS Security Scan
+        continue-on-error: true
+        run: docker run -t -v "$PWD:/data" checkmarx/kics:latest scan -p /data/ --report-formats all -e "**/.terraform/**" -o "/data/${{ env.SCAN_KICS }}"
+
+      - name: TFSec Scan
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          format: json
+          soft_fail: false
+          out: ${{ env.SCAN_TFSEC }}
+          working_dir: ${{ env.WORKDIR }}
+
+      # 上传产物到S3
+      - name: Upload Artifacts to S3
         run: |
-          rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
-          if [[ "${{ inputs.target-folder }}" != '' ]]; then
-            rclone copy ${{ env.WORKDIR }}/plan-output/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
+          rclone config create s3 s3 provider=AWS region=${{ env.AWS_REGION }} env_auth=true acl=private sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
+          S3_BASE="s3:${{ env.BUCKET_ARTIFACT }}/pipeline-artifacts/${{ env.WORKDIR }}"
+
+          if [[ -n "${{ inputs.target-folder }}" ]]; then
+            rclone copy ${{ env.WORKDIR }}/plan.tfplan $S3_BASE/plans/${{ env.RUN_ID }}/
+            rclone copy ${{ env.WORKDIR }}/plan-output/ $S3_BASE/plans/${{ env.RUN_ID }}/
+            rclone copy ${{ env.SCAN_KICS }}/ $S3_BASE/scans/${{ env.RUN_ID }}/
+            rclone copy ${{ env.SCAN_TFSEC }} $S3_BASE/scans/${{ env.RUN_ID }}/
           else
-            find ${{ env.WORKDIR }}/plan-output -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
-              pdir=$(basename "$dir")
-              rclone copy "$dir" s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$pdir/plans/${{ github.run_id }}/
+            find ${{ env.BASE_DIR }} -name "plan.tfplan" | while read f; do
+              folder=$(echo $f | sed -E "s|${{ env.BASE_DIR }}/||;s|/plan.tfplan||")
+              rclone copy $f $S3_BASE/$folder/plans/${{ env.RUN_ID }}/
             done
           fi
 
-      - name: Upload Plan as GitHub Artifact (for apply)
+      # 缓存工作目录给Apply使用
+      - name: Upload Workspace Cache
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan
-          path: ${{ env.WORKDIR }}/plan-output/
-          if-no-files-found: error
+          name: terragrunt-workspace-${{ env.RUN_ID }}
+          path: ${{ env.BASE_DIR }}/
+          include-hidden-files: true
           retention-days: 7
 
-  # =========================== 首次审批 ===========================
-  approval1:
-    name: First Approval - GMI-Devops
-    needs: [plan]
+  # ==================== 双审批流程 ====================
+  # 第一关：安全合规审批
+  approval-security:
+    name: 🔐 Security Approval
+    needs: terragrunt-plan
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: read
     steps:
-      - name: Wait for first approval
+      - name: Send Email Notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: zhangzh@anchnet.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "🚨 IaC安全审批请求 - ${{ inputs.project-name }}/${{ inputs.env-folder }}"
+          to: ${{ env.APPROVER_SECURITY }}
+          from: GitHub Actions IaC Pipeline
+          body: |
+            部署任务需要安全审批：
+            项目：${{ inputs.project-name }}
+            环境：${{ inputs.env-folder }}
+            构建ID：${{ env.RUN_ID }}
+            链接：https://github.com/${{ github.repository }}/actions/runs/${{ env.RUN_ID }}
+
+      - name: Security Team Approval
         uses: trstringer/manual-approval@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
         with:
           secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPROVE_USER }}
+          approvers: ${{ env.APPROVER_SECURITY }}
           minimum-approvals: 1
-          issue-title: "AWS-IAC 环境 ${{ env.WORKDIR }} 部署审批请求 (首次)"
-          issue-body: |
-            **部署信息:**
-            - 提交 SHA: ${{ github.sha }}
-            - 提交信息: ${{ github.event.head_commit.message }}
-            - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          issue-title: "【安全审批】AWS IaC 部署 - ${{ inputs.project-name }}/${{ inputs.env-folder }}"
+          issue-body: "请审核安全扫描结果并批准。\n构建链接：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ env.RUN_ID }}"
+          timeout: ${{ env.APPROVE_TIMEOUT }}
 
-            请审核并批准此次 AWS-IAC 环境部署（首次审批）。
-          issue-labels: "deployment,approval-needed"
-          timeout: 1d
-
-  # =========================== 二次审批 ===========================
-  approval2:
-    name: Second Approval - GMI-Infra
-    needs: [approval1]
+  # 第二关：部署审批
+  approval-deploy:
+    name: 🚀 Deployment Approval
+    needs: [terragrunt-plan, approval-security]
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      pull-requests: read
     steps:
-      - name: Wait for second approval
+      - name: Send Deployment Approval Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: zhangzh@anchnet.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "✅ 安全审批通过，等待部署审批 - ${{ inputs.project-name }}"
+          to: ${{ env.APPROVER_DEPLOY }}
+          from: GitHub Actions IaC Pipeline
+          body: "安全审核已通过，请审批部署。\n构建链接：https://github.com/${{ github.repository }}/actions/runs/${{ env.RUN_ID }}"
+
+      - name: Deployment Team Approval
         uses: trstringer/manual-approval@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
         with:
           secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPROVE_USER_2 }}
+          approvers: ${{ env.APPROVER_DEPLOY }}
           minimum-approvals: 1
-          issue-title: "AWS-IAC 环境 ${{ env.WORKDIR }} 部署审批请求 (二次)"
-          issue-body: |
-            **部署信息:**
-            - 提交 SHA: ${{ github.sha }}
-            - 提交信息: ${{ github.event.head_commit.message }}
-            - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          issue-title: "【部署审批】AWS IaC 执行 - ${{ inputs.project-name }}/${{ inputs.env-folder }}"
+          issue-body: "Plan已生成，确认执行Apply。\n链接：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ env.RUN_ID }}"
+          timeout: ${{ env.APPROVE_TIMEOUT }}
 
-            请审核并批准此次 AWS-IAC 环境部署（二次审批）。
-          issue-labels: "deployment,approval-needed"
-          timeout: 1d
-
-  # =========================== Apply 阶段 ===========================
-  apply:
-    name: Terragrunt Apply with OpenTofu
-    needs: [approval2]
+  # ==================== 最终执行Apply ====================
+  terragrunt-apply:
+    name: Terragrunt Apply
+    needs: [approval-deploy, terragrunt-plan]
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           role-to-assume: ${{ env.AWS_IAM_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install Opentofu and Terragrunt
+      - name: Install Tools
         run: |
-          wget https://github.com/opentofu/opentofu/releases/download/v${{ env.OPENTOFU_VERSION }}/tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
-          unzip tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip -d /usr/local/bin/
-          chmod +x /usr/local/bin/tofu
-          rm tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
+          wget -q https://github.com/opentofu/opentofu/releases/download/v${{ env.OPENTOFU_VERSION }}/tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
+          unzip -q tofu_*.zip -d /usr/local/bin/ && chmod +x /usr/local/bin/tofu && rm -f tofu_*.zip
+          curl -sL https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TERRAGRUNT_VERSION }}/terragrunt_linux_amd64 -o /usr/local/bin/terragrunt
+          chmod +x /usr/local/bin/terragrunt
 
-          curl -L https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TERRAGRUNT_VERSION }}/terragrunt_linux_amd64 -o terragrunt
-          chmod +x terragrunt
-          sudo mv terragrunt /usr/local/bin/
-
-      - name: Download Plan Artifact
+      - name: Download Cached Workspace
         uses: actions/download-artifact@v4
         with:
-          name: terraform-plan
-          path: ${{ env.WORKDIR }}/plan-output
+          name: terragrunt-workspace-${{ env.RUN_ID }}
+          path: ${{ env.BASE_DIR }}/
 
-      - name: Terragrunt Init
-        working-directory: ${{ env.WORKDIR }}
+      - name: Configure SSH
         run: |
-          export TERRAGRUNT_TF_BINARY=tofu
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          echo "${{ secrets.SSH_PUBLIC }}" > ~/.ssh/id_rsa.pub
-          chmod 600 ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa.pub
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-          if [[ "${{ inputs.target-folder }}" != '' ]]; then
-            terragrunt init --terragrunt-non-interactive
-          else
-            terragrunt run-all init --terragrunt-non-interactive
-          fi
 
       - name: Terragrunt Apply
         working-directory: ${{ env.WORKDIR }}
-        id: apply
         run: |
-          if [[ "${{ inputs.target-folder }}" != '' ]]; then
-            # 单模块：直接应用 plan 文件
-            terragrunt apply -auto-approve ./plan-output/plan.tfplan
+          export TERRAGRUNT_TF_BINARY=tofu
+          if [[ -z "${{ inputs.target-folder }}" ]]; then
+            terragrunt run-all apply -auto-approve
           else
-            # 多模块：遍历 plan-output 下的每个子目录并应用
-            for dir in ./plan-output/*/ ; do
-              if [ -f "$dir/plan.tfplan" ]; then
-                echo "Applying plan in $dir"
-                cd $(basename "$dir")  # 进入对应的 terragrunt 模块目录
-                terragrunt apply -auto-approve "$dir/plan.tfplan"
-                cd ..
-              fi
-            done
+            if [[ -z "${{ inputs.module-name }}" ]]; then
+              terragrunt apply -auto-approve
+            else
+              target=$(echo "${{ inputs.module-name }}" | tr ',' '\n' | sed 's/^/--target=module./' | tr '\n' ' ')
+              terragrunt apply -auto-approve $target
+            fi
           fi
-        continue-on-error: true # 捕获失败状态，用于通知
 
-      - name: Upload Terraform Log
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-log-${{ github.run_id }}
-          path: ${{ env.WORKDIR }}/terraform.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Send Email Notification on Failure
-        if: steps.apply.outcome == 'failure'
+      - name: Deployment Success Notification
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: ${{ secrets.SMTP_SERVER }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "❌ AWS-IAC 部署失败 - ${{ env.WORKDIR }}"
-          to: zhangzh@anchnet.com # 可配置多个邮箱
-          from: GitHub Actions <actions@example.com>
-          body: |
-            **部署失败详情**
-            - 工作流: ${{ github.workflow }}
-            - 运行编号: ${{ github.run_id }}
-            - 提交: ${{ github.sha }}
-            - 失败步骤: ${{ steps.apply.outcome }}
-            - 查看日志: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          server_address: zhangzh@anchnet.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "✅ IaC部署成功 - ${{ inputs.project-name }}/${{ inputs.env-folder }}"
+          to: ${{ env.APPROVER_SECURITY }},${{ env.APPROVER_DEPLOY }}
+          body: "部署已完成！\n环境：${{ inputs.project-name }}/${{ inputs.env-folder }}\n构建ID：${{ env.RUN_ID }}"
