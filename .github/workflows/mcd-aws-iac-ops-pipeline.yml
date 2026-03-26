@@ -84,6 +84,11 @@ jobs:
           # role-to-assume: ${{ env.AWS_IAM_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Debug AWS Identity
+        run: |
+          aws sts get-caller-identity
+          aws s3 ls s3://my-bucket-zhangzh-uat/ || echo "Cannot list bucket"
+
       - name: Install Opentofu and Terragrunt
         run: |
           wget https://github.com/opentofu/opentofu/releases/download/v${{ env.OPENTOFU_VERSION }}/tofu_${{ env.OPENTOFU_VERSION }}_linux_amd64.zip
