@@ -1,5 +1,7 @@
-region = "ap-east-1"
-tags = {
-  Environment = "uat"
-  Project     = "mcd"
+global = {
+  environment_name = "uat"
+
+  regions = {
+    ea = "ap-east-1"
+  }
 }
