@@ -4,15 +4,10 @@ enable_versioning = true
 
 table_name   = "my-table-zhangzh-uat"
 billing_mode = "PAY_PER_REQUEST"
-hash_key     = "PK"
-range_key    = "SK"
+hash_key     = "LockID"
 attributes = [
   {
-    name = "PK"
-    type = "S"
-  },
-  {
-    name = "SK"
+    name = "LockID"
     type = "S"
   }
 ]

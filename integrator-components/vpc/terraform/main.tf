@@ -1,5 +1,5 @@
 module "aws_vpc" {
-  source                               = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  source                               = "git@github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
   for_each                             = var.create_aws_vpc_config
   create_aws_vpc                       = each.value.create_aws_vpc
   cidr_block                           = each.value.cidr_block
@@ -16,7 +16,7 @@ module "aws_vpc" {
   tags                                 = try(merge(each.value.tags, var.global.tags), null)
 }
 module "aws_subnet" {
-  source                                                    = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  source                                                    = "git@github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
   for_each                                                  = var.create_aws_subnet_config
   create_aws_subnet                                         = each.value.create_aws_subnet
   aws_subnet_vpc_id                                         = each.value.vpc_id == null ? module.aws_vpc[each.value.vpc_id_depend_key].aws_vpc_id : each.value.vpc_id
@@ -35,7 +35,7 @@ module "aws_subnet" {
   aws_subnet_tags                                           = try(merge(each.value.tags, var.global.tags), null)
 }
 module "aws_route_table" {
-  source                           = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  source                           = "git@github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
   for_each                         = var.create_aws_route_table_config
   create_aws_route_table           = each.value.create_aws_route_table
   aws_route_table_vpc_id           = each.value.vpc_id == null ? module.aws_vpc[each.value.vpc_id_depend_key].aws_vpc_id : each.value.vpc_id
@@ -44,7 +44,7 @@ module "aws_route_table" {
   aws_route_table_route            = try(each.value.route, null)
 }
 module "aws_route" {
-  source                                = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  source                                = "git@github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
   for_each                              = var.create_aws_route_config
   create_aws_route                      = each.value.create_aws_route
   aws_route_route_table_id              = each.value.route_table_id == null ? module.aws_route_table[each.value.route_table_id_depend_key].aws_route_table_id : each.value.route_table_id
@@ -63,7 +63,7 @@ module "aws_route" {
   aws_route_vpc_peering_connection_id   = try(each.value.vpc_peering_connection_id, null)
 }
 module "aws_route_table_association" {
-  source                                     = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  source                                     = "git@github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
   for_each                                   = var.create_aws_route_table_association_config
   create_aws_route_table_association         = each.value.create_aws_route_table_association
   aws_route_table_association_route_table_id = each.value.route_table_id == null ? module.aws_route_table[each.value.route_table_id_depend_key].aws_route_table_id : each.value.route_table_id
