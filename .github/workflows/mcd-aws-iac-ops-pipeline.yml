@@ -198,8 +198,9 @@ jobs:
             !${{ env.WORKDIR }}/**/**/**/.terraform
           include-hidden-files: true
 
-  approval:
-    name: Approval
+  # 第一层审批
+  approval-1:
+    name: First Approval
     needs: terragrunt
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
@@ -208,30 +209,62 @@ jobs:
       contents: read
       issues: write
       pull-requests: read
-
     steps:
-      - name: Wait for approval (dual approval)
+      - name: Wait for first approval
         uses: trstringer/manual-approval@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
         with:
           secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPROVE_USER }}
-          minimum-approvals: 2 # 改为 2，实现双审批
-          issue-title: "AWS-IAC-环境${{ env.WORKDIR }}部署审批请求"
+          approvers: ${{ env.APPROVERS_FIRST }} # 第一组审批人（逗号分隔）
+          minimum-approvals: 1
+          issue-title: "【第一层审批】AWS-IAC-环境 ${{ env.WORKDIR }} 部署审批请求"
           issue-body: |
             **部署信息:**
             - 提交 SHA: ${{ github.sha }}
             - 提交信息: ${{ github.event.head_commit.message }}
             - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-            请至少两位审批人审核并批准此次 AWS-IAC 环境部署。
+            **请第一位审批人批准此次部署。**
+            注意：本流程需要**两位不同**的审批人，第一层批准后请通知第二位审批人进行第二层审批。
+          issue-labels: "deployment,approval-needed"
+          timeout: 1d
+
+  # 第二层审批
+  approval-2:
+    name: Second Approval
+    needs: approval-1
+    if: github.ref_name == 'main' || github.ref_name == 'production'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Wait for second approval
+        uses: trstringer/manual-approval@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+        with:
+          secret: ${{ secrets.GIT_TOKEN }}
+          approvers: ${{ env.APPROVERS_SECOND }} # 第二组审批人（逗号分隔）
+          minimum-approvals: 1
+          issue-title: "【第二层审批】AWS-IAC-环境 ${{ env.WORKDIR }} 部署审批请求"
+          issue-body: |
+            **部署信息:**
+            - 提交 SHA: ${{ github.sha }}
+            - 提交信息: ${{ github.event.head_commit.message }}
+            - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            **请第二位审批人批准此次部署。**
+            请确认第一位审批人已经批准，并再次核对变更内容。
           issue-labels: "deployment,approval-needed"
           timeout: 1d
 
   apply:
     name: Terragrunt Apply with OpenTofu (Using Approved Plan)
-    needs: [terragrunt, approval]
+    needs: [terragrunt, approval-1, approval-2]
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
     permissions:
