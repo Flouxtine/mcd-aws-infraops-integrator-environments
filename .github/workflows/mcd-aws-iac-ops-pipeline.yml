@@ -99,6 +99,11 @@ jobs:
           additional_args: "--out ${{ env.TFSEC_RESULT }}"
           working_dir: ${{ env.WORKDIR }}
 
+      # ✅ 新增：安装 rclone
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
       - name: Upload scan results to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
@@ -173,6 +178,9 @@ jobs:
             terragrunt show -json ./plan.tfplan > ./plan-output/plan.json
             cp ./plan.tfplan ./plan-output/plan.tfplan
           fi
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
 
       - name: Upload Plan to S3 (Backup)
         env:
