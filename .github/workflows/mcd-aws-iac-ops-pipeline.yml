@@ -94,19 +94,21 @@ jobs:
 
       - name: Install Rclone
         uses: AnimMouse/setup-rclone@v1
-      - name: Configure Git credentials
+
+      - name: Configure Git to use PAT for GitHub
         run: |
           git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
+
       - name: Terragrunt Plan
         id: plan
         working-directory: ${{ env.WORKDIR }}
         run: |
           export TERRAGRUNT_TF_BINARY=tofu
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          echo "${{ secrets.SSH_PUBLIC }}" > ~/.ssh/id_rsa.pub
-          chmod 600 ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa.pub
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          # mkdir -p ~/.ssh
+          # echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          # echo "${{ secrets.SSH_PUBLIC }}" > ~/.ssh/id_rsa.pub
+          # chmod 600 ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa.pub
+          # ssh-keyscan github.com >> ~/.ssh/known_hosts
 
           if [[ "${{ inputs.target-folder }}" == '' ]]; then
             terragrunt plan-all -input=false -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
