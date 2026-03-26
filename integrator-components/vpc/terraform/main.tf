@@ -36,39 +36,43 @@ module "aws_subnet" {
   aws_subnet_tags                                           = try(merge(each.value.tags, var.global.tags), null)
 }
 module "aws_route_table" {
-  source                           = "git::https://github.com/Flouxtine/aws-terraform-base-module.git?ref=main"
-  for_each                         = var.create_aws_route_table_config
-  create_aws_route_table           = each.value.create_aws_route_table
-  aws_route_table_vpc_id           = each.value.vpc_id == null ? module.aws_vpc[each.value.vpc_id_depend_key].aws_vpc_id : each.value.vpc_id
-  aws_route_table_propagating_vgws = try(each.value.propagating_vgws, null)
-  aws_route_table_tags             = try(merge(each.value.tags, var.global.tags), null)
-  aws_route_table_route            = try(each.value.route, null)
+  source   = "git::https://github.com/Flouxtine/aws-terraform-base-module.git?ref=main"
+  for_each = var.create_aws_route_table_config
+
+  create           = each.value.create_aws_route_table # 注意这里改成模块支持的参数名
+  vpc_id           = each.value.vpc_id == null ? module.aws_vpc[each.value.vpc_id_depend_key].aws_vpc_id : each.value.vpc_id
+  propagating_vgws = try(each.value.propagating_vgws, null)
+  tags             = try(merge(each.value.tags, var.global.tags), null)
+  routes           = try(each.value.route, null)
 }
 module "aws_route" {
-  source                                = "git::https://github.com/Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
-  for_each                              = var.create_aws_route_config
-  create_aws_route                      = each.value.create_aws_route
-  aws_route_route_table_id              = each.value.route_table_id == null ? module.aws_route_table[each.value.route_table_id_depend_key].aws_route_table_id : each.value.route_table_id
-  aws_route_carrier_gateway_id          = try(each.value.carrier_gateway_id, null)
-  aws_route_core_network_arn            = try(each.value.core_network_arn, null)
-  aws_route_destination_cidr_block      = try(each.value.destination_cidr_block, null)
-  aws_route_destination_ipv6_cidr_block = try(each.value.destination_ipv6_cidr_block, null)
-  aws_route_destination_prefix_list_id  = try(each.value.destination_prefix_list_id, null)
-  aws_route_egress_only_gateway_id      = try(each.value.egress_only_gateway_id, null)
-  aws_route_gateway_id                  = try(each.value.gateway_id, null)
-  aws_route_local_gateway_id            = try(each.value.local_gateway_id, null)
-  aws_route_nat_gateway_id              = try(each.value.nat_gateway_id, null)
-  aws_route_network_interface_id        = try(each.value.network_interface_id, null)
-  aws_route_transit_gateway_id          = try(each.value.transit_gateway_id, null)
-  aws_route_vpc_endpoint_id             = try(each.value.vpc_endpoint_id, null)
-  aws_route_vpc_peering_connection_id   = try(each.value.vpc_peering_connection_id, null)
+  source   = "git::https://github.com/Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  for_each = var.create_aws_route_config
+
+  # 将 each.value.create_aws_route 映射到模块的 create
+  create                      = each.value.create_aws_route
+  route_table_id              = each.value.route_table_id == null ? module.aws_route_table[each.value.route_table_id_depend_key].aws_route_table_id : each.value.route_table_id
+  carrier_gateway_id          = try(each.value.carrier_gateway_id, null)
+  core_network_arn            = try(each.value.core_network_arn, null)
+  destination_cidr_block      = try(each.value.destination_cidr_block, null)
+  destination_ipv6_cidr_block = try(each.value.destination_ipv6_cidr_block, null)
+  destination_prefix_list_id  = try(each.value.destination_prefix_list_id, null)
+  egress_only_gateway_id      = try(each.value.egress_only_gateway_id, null)
+  gateway_id                  = try(each.value.gateway_id, null)
+  local_gateway_id            = try(each.value.local_gateway_id, null)
+  nat_gateway_id              = try(each.value.nat_gateway_id, null)
+  network_interface_id        = try(each.value.network_interface_id, null)
+  transit_gateway_id          = try(each.value.transit_gateway_id, null)
+  vpc_endpoint_id             = try(each.value.vpc_endpoint_id, null)
+  vpc_peering_connection_id   = try(each.value.vpc_peering_connection_id, null)
 }
 module "aws_route_table_association" {
-  source                                     = "git::https://github.com/Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
-  for_each                                   = var.create_aws_route_table_association_config
-  create_aws_route_table_association         = each.value.create_aws_route_table_association
-  aws_route_table_association_route_table_id = each.value.route_table_id == null ? module.aws_route_table[each.value.route_table_id_depend_key].aws_route_table_id : each.value.route_table_id
-  aws_route_table_association_region         = try(each.value.region, null)
-  aws_route_table_association_subnet_id      = each.value.subnet_id == null ? module.aws_subnet[each.value.subnet_id_depend_key].aws_subnet_id : each.value.subnet_id
-  aws_route_table_association_gateway_id     = try(each.value.gateway_id, null)
+  source   = "git::https://github.com/Flouxtine/aws-terraform-base-module.git//terraform-aws-vpc?ref=main"
+  for_each = var.create_aws_route_table_association_config
+
+  create         = each.value.create_aws_route_table_association
+  route_table_id = each.value.route_table_id == null ? module.aws_route_table[each.value.route_table_id_depend_key].aws_route_table_id : each.value.route_table_id
+  region         = try(each.value.region, null)
+  subnet_id      = each.value.subnet_id == null ? module.aws_subnet[each.value.subnet_id_depend_key].aws_subnet_id : each.value.subnet_id
+  gateway_id     = try(each.value.gateway_id, null)
 }
