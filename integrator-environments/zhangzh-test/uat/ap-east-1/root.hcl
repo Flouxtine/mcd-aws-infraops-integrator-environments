@@ -7,5 +7,5 @@ remote_state {
     encrypt        = true
     dynamodb_table = "my-table-zhangzh-uat"
   }
-  #   skip_bucket_policy = true
+    skip_bucket_policy = true
 }
