@@ -50,32 +50,37 @@ env:
   TF_INPUT: false
   WORKDIR: integrator-environments/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{inputs.aws-region}}/${{ inputs.target-folder }}
   AWS_REGION: ${{ inputs.aws-region }}
+
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_IAM_ROLE: ${{ secrets.AWS_IAM_ROLE }}
+
   TERRAGRUNT_TFPATH: /usr/local/bin/tofu
   OPENTOFU_VERSION: "1.6.2"
   TERRAGRUNT_VERSION: "0.54.8"
 
   KICS_RESULT: "kics-results.all"
   TFSEC_RESULT: "tfsec-results.json"
-  APPROVE_USER: Zane
-
+  APPROVE_USER: Flouxtine
 jobs:
   terragrunt:
     name: Terragrunt Plan with OpenTofu
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # 升级到 v4
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4 # 升级到 v4
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.AWS_IAM_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
-          # ❌ 删除 role-to-assume
 
       - name: Install Opentofu and Terragrunt
         run: |
@@ -102,36 +107,39 @@ jobs:
           chmod 600 ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa.pub
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-          if [[ "${{ inputs.target-folder }}" == '' ]];then
+          if [[ "${{ inputs.target-folder }}" == '' ]]; then
             terragrunt plan-all -input=false -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
+            # 收集所有 plan 文件，并生成 JSON 输出
             find . -name "plan.tfplan" -exec dirname {} \; | while read -r dir; do 
-              pdir=$(echo "$dir" | cut -d'/' -f2);
-              mkdir -p ./plan-output/$pdir
-              cd $pdir && terragrunt show -json ./plan.tfplan > ../plan-output/$pdir/plan.json && cd ..
+              # 提取相对路径，例如 ./dx 中的 dx
+              rel_dir=$(echo "$dir" | sed 's|^\./||')
+              mkdir -p ../plan-output/$rel_dir
+              cd "$rel_dir" && terragrunt show -json ./plan.tfplan > ../../plan-output/$rel_dir/plan.json && cd ..
             done || echo "exit_code=$?" >> $GITHUB_OUTPUT
           else
             mkdir -p ./plan-output
-            if [[ "${{ inputs.module-name }}" == '' ]];then
+            if [[ "${{ inputs.module-name }}" == '' ]]; then
               terragrunt plan -input=false -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
             else
               target=$(echo "${{ inputs.module-name }}" | awk -F',' '{ for(i=1;i<=NF;i++) printf "--target=module.%s ", $i }')
               terragrunt plan -input=false $target -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
             fi
-            echo tf_workdir=$(terragrunt terragrunt-info | grep WorkingDir | cut -d '"' -f  4  | awk -F'/.terragrunt-cache' '{print $2}') >> $GITHUB_ENV
+            # 记录工作目录（用于后续 S3 路径）
+            echo tf_workdir=$(terragrunt terragrunt-info | grep WorkingDir | cut -d '"' -f 4 | awk -F'/.terragrunt-cache' '{print $2}') >> $GITHUB_ENV
             terragrunt show -json ./plan.tfplan > ./plan-output/plan.json
           fi
 
       - name: KICS Scan
         continue-on-error: true
         run: |
-          docker run -t -v "./":/data checkmarx/kics:latest scan -p /data/ --report-formats all -e "**/.terraform/providers/*"  -o "/data/${{ env.KICS_RESULT }}"
+          docker run -t -v "./":/data checkmarx/kics:latest scan -p /data/ --report-formats all -e "**/.terraform/providers/*" -o "/data/${{ env.KICS_RESULT }}"
 
       - name: Tfsec Scan
         uses: aquasecurity/tfsec-action@v1.0.0
         with:
           format: json
           soft_fail: false
-          additional_args: "--out ${{ env.TFSEC_RESULT }} "
+          additional_args: "--out ${{ env.TFSEC_RESULT }}"
           working_dir: ${{ env.WORKDIR }}
 
       - name: Show tfsec scan result
@@ -140,12 +148,11 @@ jobs:
 
       - name: Upload Plan to S3 with Rclone
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          BUCKET_NAME: "terraform-backend-state-ap-east-1"
+          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          BUCKET_NAME: "my-bucket-zhangzh-uat"
         run: |
           UPLOAD_SUMMARY=$(mktemp)
-
           START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
           echo "📦 S3 上传汇总报告" > $UPLOAD_SUMMARY
           echo "📅 时间: $START_TIME" >> $UPLOAD_SUMMARY
@@ -154,26 +161,27 @@ jobs:
           echo "-----------------------------------------" >> $UPLOAD_SUMMARY
 
           rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
-          if [[ "${{ inputs.target-folder }}" != '' ]];then
-            rclone copy ${{ env.WORKDIR }}/.terragrunt-cache${{ env.tf_workdir }}/plan.tfplan s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}/plans/${{ github.run_id }}/
-            rclone copy ${{ env.WORKDIR }}/plan-output/* s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}/plans/${{ github.run_id }}/
-            rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}/scans/${{ github.run_id }}/
+          if [[ "${{ inputs.target-folder }}" != '' ]]; then
+            # 单目录模式
+            rclone copy ${{ env.WORKDIR }}/.terragrunt-cache${{ env.tf_workdir }}/plan.tfplan s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
+            rclone copy ${{ env.WORKDIR }}/plan-output/* s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
+            rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
             rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
-            
             echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/{plan.tfplan,plan.json}" >> $UPLOAD_SUMMARY
             echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/{tfsec-results.json,kics-results.*}" >> $UPLOAD_SUMMARY
           else
-            find . -name "plan.tfplan" -exec dirname {} \; | while read -r dir; do
-              pdir=$(echo "$dir" | cut -d'/' -f6)
-              rclone copy $dir/plan.tfplan s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}$pdir/plans/${{ github.run_id }}/
-              rclone copy ${{ env.WORKDIR }}plan-output/$pdir/plan.json s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}$pdir/plans/${{ github.run_id }}/
-              rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}$pdir/scans/${{ github.run_id }}/
-              rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}$pdir/scans/${{ github.run_id }}/
-              
-              echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR}}$pdir/plans/${{ github.run_id }}/{plan.tfplan,plan.json}" >> $UPLOAD_SUMMARY
-              echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}$pdir/scans/${{ github.run_id }}/{tfsec-results.json,kics-results.*}" >> $UPLOAD_SUMMARY
+            # 多目录模式（run-all）
+            find ${{ env.WORKDIR }} -name "plan.tfplan" -exec dirname {} \; | while read -r dir; do
+              # 提取相对于 WORKDIR 的路径
+              rel_path=$(echo "$dir" | sed "s|^${{ env.WORKDIR }}/||")
+              rclone copy "$dir/plan.tfplan" s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/
+              rclone copy "${{ env.WORKDIR }}/plan-output/$rel_path/plan.json" s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/
+              rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/
+              rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/
+              echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/{plan.tfplan,plan.json}" >> $UPLOAD_SUMMARY
+              echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/{tfsec-results.json,kics-results.*}" >> $UPLOAD_SUMMARY
             done
-            rm -r ${{ env.WORKDIR }}plan-output
+            rm -rf ${{ env.WORKDIR }}/plan-output
           fi
           echo -e "\033[1;36m$(cat "$UPLOAD_SUMMARY")\033[0m"
 
@@ -184,7 +192,7 @@ jobs:
           path: |
             ${{ env.WORKDIR }}
             !${{ env.WORKDIR }}/**/**/.terraform
-            !${{ env.WORKDIR }}**/**/**/.terraform
+            !${{ env.WORKDIR }}/**/**/**/.terraform
           include-hidden-files: true
 
   approval:
@@ -193,18 +201,20 @@ jobs:
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
+      contents: read
       issues: write
       pull-requests: read
 
     steps:
-      - name: Wait for approval
+      - name: Wait for approval (dual approval)
         uses: trstringer/manual-approval@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
         with:
           secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPPROVE_USER }}
-          minimum-approvals: 1
+          approvers: ${{ env.APPROVE_USER }}
+          minimum-approvals: 2 # 改为 2，实现双审批
           issue-title: "AWS-IAC-环境${{ env.WORKDIR }}部署审批请求"
           issue-body: |
             **部署信息:**
@@ -212,25 +222,29 @@ jobs:
             - 提交信息: ${{ github.event.head_commit.message }}
             - 构建产物: [查看构建日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-            请审核并批准此次AWS-IAC环境部署。
+            请至少两位审批人审核并批准此次 AWS-IAC 环境部署。
           issue-labels: "deployment,approval-needed"
           timeout: 1d
 
   apply:
-    name: Terragrunt Apply with OpenTofu
+    name: Terragrunt Apply with OpenTofu (Using Approved Plan)
     needs: [terragrunt, approval]
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.AWS_IAM_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Install Opentofu and Terragrunt
@@ -243,6 +257,9 @@ jobs:
           curl -L https://github.com/gruntwork-io/terragrunt/releases/download/v${{ env.TERRAGRUNT_VERSION }}/terragrunt_linux_amd64 -o terragrunt
           chmod +x terragrunt
           sudo mv terragrunt /usr/local/bin/
+
+      - name: Install Rclone
+        uses: AnimMouse/setup-rclone@v1
 
       - name: Download terragrunt-cache
         uses: actions/download-artifact@v4
@@ -260,22 +277,56 @@ jobs:
           chmod 600 ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa.pub
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-          if [[ "${{ inputs.target-folder }}" != '' ]];then
+          if [[ "${{ inputs.target-folder }}" != '' ]]; then
             terragrunt init --terragrunt-non-interactive
           else
-            terragrunt run-all init  --terragrunt-non-interactive
+            terragrunt run-all init --terragrunt-non-interactive
+          fi
+
+      - name: Download plan files from S3
+        env:
+          BUCKET_NAME: "terraform-backend-state-ap-east-1"
+        run: |
+          # 配置 rclone（使用 OIDC 角色）
+          rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
+
+          if [[ "${{ inputs.target-folder }}" != '' ]]; then
+            # 单目录模式
+            mkdir -p ${{ env.WORKDIR }}/.plan
+            rclone copy s3_static:$BUCKET_NAME/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/ ${{ env.WORKDIR }}/.plan/
+          else
+            # 多目录模式：列出 S3 上所有 plan 文件并下载到对应位置
+            rclone ls s3_static:$BUCKET_NAME/pipeline-artifacts/${{ env.WORKDIR }}/ --include "*/plans/${{ github.run_id }}/plan.tfplan" | while read -r line; do
+              # 解析路径，例如 "12345 integrator-environments/.../dx/plans/123/plan.tfplan"
+              s3_path=$(echo "$line" | awk '{print $2}')
+              # 提取相对路径（去掉前缀）
+              rel_path=$(echo "$s3_path" | sed "s|pipeline-artifacts/${{ env.WORKDIR }}/||" | sed "s|/plans/${{ github.run_id }}/plan.tfplan||")
+              mkdir -p ${{ env.WORKDIR }}/$rel_path/.plan
+              rclone copy "s3_static:$BUCKET_NAME/$s3_path" "${{ env.WORKDIR }}/$rel_path/.plan/plan.tfplan"
+              # 同时下载 plan.json（可选，用于审计）
+              rclone copy "s3_static:$BUCKET_NAME/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/plan.json" "${{ env.WORKDIR }}/$rel_path/.plan/plan.json"
+            done
           fi
 
       - name: Terragrunt Apply
         working-directory: ${{ env.WORKDIR }}
         run: |
-          if [[ "${{ inputs.target-folder }}" != '' ]];then
-            if [[ "${{ inputs.module-name }}" == '' ]];then
-              terragrunt apply -auto-approve
+          export TERRAGRUNT_TF_BINARY=tofu
+          if [[ "${{ inputs.target-folder }}" != '' ]]; then
+            # 单目录：直接使用下载的 plan 文件
+            if [[ -f ".plan/plan.tfplan" ]]; then
+              terragrunt apply .plan/plan.tfplan
             else
-              target=$(echo "${{ inputs.module-name }}" | awk -F',' '{ for(i=1;i<=NF;i++) printf "--target=module.%s ", $i }')
-              terragrunt apply -auto-approve $target
+              echo "❌ Plan file not found in .plan/plan.tfplan"
+              exit 1
             fi
           else
-            terragrunt run-all apply -auto-approve 
+            # 多目录：遍历每个子目录，找到 plan 文件并 apply
+            find . -type f -path "*/.plan/plan.tfplan" | while read -r planfile; do
+              plan_dir=$(dirname "$planfile")
+              cd "$plan_dir/.."   # 进入模块根目录（即包含 terragrunt.hcl 的目录）
+              echo "Applying plan from $planfile in $(pwd)"
+              terragrunt apply "$planfile"
+              cd - > /dev/null
+            done
           fi
