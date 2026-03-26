@@ -31,14 +31,5 @@ create_aws_vpc_config = {
       "Name" = "zhangzh-subnet-uat-ap-east-1b"
     }
   }
-  zhangzh-route-table-uat-ap-east-1 = {
-    create_aws_route_table = true
-    name                   = "zhangzh-route-table-uat-ap-east-1"
-    vpc_id_depend_key      = "zhangzh-vpc-uat-ap-east-1"
-    route = [
-      {
-        destination_cidr_block = "0.0.0.0/0"
-      }
-    ]
-  }
 }
+
