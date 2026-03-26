@@ -28,7 +28,6 @@ on:
           - dev
           - sit
           - uat
-          - dev
           - prod
           - test
       target-folder:
@@ -52,9 +51,6 @@ env:
   WORKDIR: integrator-environments/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{inputs.aws-region}}/${{ inputs.target-folder }}
   AWS_REGION: ${{ inputs.aws-region }}
 
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
   TERRAGRUNT_TFPATH: /usr/local/bin/tofu
   OPENTOFU_VERSION: "1.6.2"
   TERRAGRUNT_VERSION: "0.54.8"
@@ -67,21 +63,18 @@ jobs:
   terragrunt:
     name: Terragrunt Plan with OpenTofu
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # 升级到 v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4 # 升级到 v4
         with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          role-to-assume: ${{ env.AWS_IAM_ROLE }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+          # ❌ 删除 role-to-assume
 
       - name: Install Opentofu and Terragrunt
         run: |
@@ -146,8 +139,8 @@ jobs:
 
       - name: Upload Plan to S3 with Rclone
         env:
-          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           BUCKET_NAME: "terraform-backend-state-ap-east-1"
         run: |
           UPLOAD_SUMMARY=$(mktemp)
@@ -192,14 +185,13 @@ jobs:
             !${{ env.WORKDIR }}/**/**/.terraform
             !${{ env.WORKDIR }}**/**/**/.terraform
           include-hidden-files: true
+
   approval:
     name: Approval
     needs: terragrunt
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
       issues: write
       pull-requests: read
 
@@ -210,9 +202,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
         with:
           secret: ${{ secrets.GIT_TOKEN }}
-          approvers: ${{ env.APPROVE_USER }}
+          approvers: ${{ env.APPPROVE_USER }}
           minimum-approvals: 1
-          issue-title: "AWS-IAC-环境${{ env.WORKDIR }}部署审批请求" # 审批请求 Issue 的标题
+          issue-title: "AWS-IAC-环境${{ env.WORKDIR }}部署审批请求"
           issue-body: |
             **部署信息:**
             - 提交 SHA: ${{ github.sha }}
@@ -228,19 +220,16 @@ jobs:
     needs: [terragrunt, approval]
     if: github.ref_name == 'main' || github.ref_name == 'production'
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Install Opentofu and Terragrunt
