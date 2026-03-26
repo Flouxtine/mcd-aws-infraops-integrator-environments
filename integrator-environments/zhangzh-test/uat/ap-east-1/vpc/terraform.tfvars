@@ -67,59 +67,59 @@ create_aws_subnet_config = {
   }
 }
 
-# 路由表配置
-create_aws_route_table_config = {
-  # 公网路由表
-  "public" = {
-    create_aws_route_table = true
-    vpc_id_depend_key      = "main"
-    tags = {
-      Name = "public-rt"
-    }
-  }
-  # 私网路由表
-  "private" = {
-    create_aws_route_table = true
-    vpc_id_depend_key      = "main"
-    tags = {
-      Name = "private-rt"
-    }
-  }
-}
-
-# 路由配置（公网路由表添加默认路由到 Internet Gateway）
-# create_aws_route_config = {
-#   "public_internet" = {
-#     create_aws_route          = true
-#     route_table_id_depend_key = "public"
-#     destination_cidr_block    = "0.0.0.0/0"
-#     # 替换为实际的 Internet Gateway ID（需提前创建）
-#     gateway_id = "igw-xxxxxxxx"
+# # 路由表配置
+# create_aws_route_table_config = {
+#   # 公网路由表
+#   "public" = {
+#     create_aws_route_table = true
+#     vpc_id_depend_key      = "main"
+#     tags = {
+#       Name = "public-rt"
+#     }
+#   }
+#   # 私网路由表
+#   "private" = {
+#     create_aws_route_table = true
+#     vpc_id_depend_key      = "main"
+#     tags = {
+#       Name = "private-rt"
+#     }
 #   }
 # }
 
-# 路由表关联（将子网绑定到对应的路由表）
-create_aws_route_table_association_config = {
-  # 公网子网关联到公网路由表
-  "public_1_assoc" = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "public"
-    subnet_id_depend_key               = "public_1"
-  }
-  "public_2_assoc" = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "public"
-    subnet_id_depend_key               = "public_2"
-  }
-  # 私网子网关联到私网路由表
-  "private_1_assoc" = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "private"
-    subnet_id_depend_key               = "private_1"
-  }
-  "private_2_assoc" = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "private"
-    subnet_id_depend_key               = "private_2"
-  }
-}
+# # 路由配置（公网路由表添加默认路由到 Internet Gateway）
+# # create_aws_route_config = {
+# #   "public_internet" = {
+# #     create_aws_route          = true
+# #     route_table_id_depend_key = "public"
+# #     destination_cidr_block    = "0.0.0.0/0"
+# #     # 替换为实际的 Internet Gateway ID（需提前创建）
+# #     gateway_id = "igw-xxxxxxxx"
+# #   }
+# # }
+
+# # 路由表关联（将子网绑定到对应的路由表）
+# create_aws_route_table_association_config = {
+#   # 公网子网关联到公网路由表
+#   "public_1_assoc" = {
+#     create_aws_route_table_association = true
+#     route_table_id_depend_key          = "public"
+#     subnet_id_depend_key               = "public_1"
+#   }
+#   "public_2_assoc" = {
+#     create_aws_route_table_association = true
+#     route_table_id_depend_key          = "public"
+#     subnet_id_depend_key               = "public_2"
+#   }
+#   # 私网子网关联到私网路由表
+#   "private_1_assoc" = {
+#     create_aws_route_table_association = true
+#     route_table_id_depend_key          = "private"
+#     subnet_id_depend_key               = "private_1"
+#   }
+#   "private_2_assoc" = {
+#     create_aws_route_table_association = true
+#     route_table_id_depend_key          = "private"
+#     subnet_id_depend_key               = "private_2"
+#   }
+# }
