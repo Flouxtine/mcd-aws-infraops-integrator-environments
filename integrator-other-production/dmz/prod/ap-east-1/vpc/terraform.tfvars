@@ -1,7 +1,6 @@
 create_aws_vpc_config = {
   aws-prod-dmz-vpc-01 = {
     create_aws_vpc       = true
-    name                 = "aws-prod-dmz-vpc-01"
     cidr_block           = "192.168.47.0/24"
     enable_dns_support   = true
     enable_dns_hostnames = true
@@ -14,7 +13,6 @@ create_aws_vpc_config = {
 create_aws_subnet_config = {
   aws-prod-dmz-vsw-pub-1a-01 = {
     create_aws_subnet = true
-    name              = "aws-prod-dmz-vsw-pub-1a-01"
     vpc_id_depend_key = "aws-prod-dmz-vpc-01"
     cidr_block        = "192.168.47.0/26"
     availability_zone = "ap-east-1a"
@@ -25,7 +23,6 @@ create_aws_subnet_config = {
   }
   aws-prod-dmz-vsw-pub-1c-01 = {
     create_aws_subnet = true
-    name              = "aws-prod-dmz-vsw-pub-1c-01"
     vpc_id_depend_key = "aws-prod-dmz-vpc-01"
     cidr_block        = "192.168.47.64/26"
     availability_zone = "ap-east-1c"
@@ -36,7 +33,6 @@ create_aws_subnet_config = {
   }
   aws-prod-dmz-vsw-pri-1a-01 = {
     create_aws_subnet = true
-    name              = "aws-prod-dmz-vsw-pri-1a-01"
     vpc_id_depend_key = "aws-prod-dmz-vpc-01"
     cidr_block        = "192.168.47.128/26"
     availability_zone = "ap-east-1a"
@@ -47,7 +43,6 @@ create_aws_subnet_config = {
   }
   aws-prod-dmz-vsw-pri-1c-01 = {
     create_aws_subnet = true
-    name              = "aws-prod-dmz-vsw-pri-1c-01"
     vpc_id_depend_key = "aws-prod-dmz-vpc-01"
     cidr_block        = "192.168.47.192/26"
     availability_zone = "ap-east-1c"
@@ -60,7 +55,6 @@ create_aws_subnet_config = {
 create_aws_route_table_config = {
   aws-prod-dmz-rt-pub-01 = {
     create_aws_route_table = true
-    name                   = "aws-prod-dmz-rt-pub-01"
     vpc_id_depend_key      = "aws-prod-dmz-vpc-01"
     tags = {
       Name = "aws-prod-dmz-rt-pub-01"
@@ -69,7 +63,6 @@ create_aws_route_table_config = {
   }
   aws-prod-dmz-rt-pri-01 = {
     create_aws_route_table = true
-    name                   = "aws-prod-dmz-rt-pri-01"
     vpc_id_depend_key      = "aws-prod-dmz-vpc-01"
     tags = {
       Name = "aws-prod-dmz-rt-pri-01"
@@ -78,7 +71,6 @@ create_aws_route_table_config = {
   }
   aws-prod-dmz-rt-pri-02 = {
     create_aws_route_table = true
-    name                   = "aws-prod-dmz-rt-pri-02"
     vpc_id_depend_key      = "aws-prod-dmz-vpc-01"
     tags = {
       Name = "aws-prod-dmz-rt-pri-02"
@@ -87,7 +79,6 @@ create_aws_route_table_config = {
   }
   aws-prod-dmz-rt-pri-03 = {
     create_aws_route_table = true
-    name                   = "aws-prod-dmz-rt-pri-03"
     vpc_id_depend_key      = "aws-prod-dmz-vpc-01"
     tags = {
       Name = "aws-prod-dmz-rt-pri-03"
@@ -99,28 +90,24 @@ create_aws_route_table_config = {
 create_aws_route_table_association_config = {
   assoc-pub-1a-01 = {
     create_aws_route_table_association = true
-    name                               = "assoc-pub-1a-01"
     route_table_id_depend_key          = "aws-prod-dmz-rt-pub-01"
     subnet_id_depend_key               = "aws-prod-dmz-vsw-pub-1a-01"
     region                             = "ap-east-1"
   }
   assoc-pub-1c-01 = {
     create_aws_route_table_association = true
-    name                               = "assoc-pub-1c-01"
     route_table_id_depend_key          = "aws-prod-dmz-rt-pub-01"
     subnet_id_depend_key               = "aws-prod-dmz-vsw-pub-1c-01"
     region                             = "ap-east-1"
   }
   assoc-pri-1a-01 = {
     create_aws_route_table_association = true
-    name                               = "assoc-pri-1a-01"
     route_table_id_depend_key          = "aws-prod-dmz-rt-pri-01"
     subnet_id_depend_key               = "aws-prod-dmz-vsw-pri-1a-01"
     region                             = "ap-east-1"
   }
   assoc-pri-1c-01 = {
     create_aws_route_table_association = true
-    name                               = "assoc-pri-1c-01"
     route_table_id_depend_key          = "aws-prod-dmz-rt-pri-02"
     subnet_id_depend_key               = "aws-prod-dmz-vsw-pri-1c-01"
     region                             = "ap-east-1"
