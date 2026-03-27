@@ -1,3 +1,27 @@
+data "aws_subnets" "by_name" {
+  for_each = {
+    for k, v in var.create_ec2_config : k => v
+    if try(v.subnet_id, null) == null && try(v.subnet_name, null) != null
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = [each.value.subnet_name]
+  }
+}
+
+data "aws_security_groups" "by_names" {
+  for_each = {
+    for k, v in var.create_ec2_config : k => v
+    if try(v.vpc_security_group_ids, null) == null && try(length(v.vpc_security_group_names), 0) > 0
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = each.value.vpc_security_group_names
+  }
+}
+
 module "ec2" {
 
   for_each = var.create_ec2_config
@@ -38,11 +62,11 @@ module "ec2" {
   cpu_threads_per_core = try(each.value.cpu_threads_per_core, null)
 
   # Network Configuration
-  subnet_id                   = each.value.subnet_id # Assuming this is always provided
+  subnet_id                   = coalesce(try(each.value.subnet_id, null), try(data.aws_subnets.by_name[each.key].ids[0], null))
   associate_public_ip_address = try(each.value.associate_public_ip_address, null)
   private_ip                  = try(each.value.private_ip, null)
   source_dest_check           = try(each.value.source_dest_check, null)
-  vpc_security_group_ids      = try(each.value.vpc_security_group_ids, null)
+  vpc_security_group_ids      = coalesce(try(each.value.vpc_security_group_ids, null), try(data.aws_security_groups.by_names[each.key].ids, null))
   secondary_private_ips       = try(each.value.secondary_private_ips, null)
   ipv6_address_count          = try(each.value.ipv6_address_count, null)
   ipv6_addresses              = try(each.value.ipv6_addresses, null)
