@@ -1,5 +1,6 @@
 locals {
   vpc         = "vpc"
+  sg          = "sg"
   elb         = "elb"
   elasticache = "elasticache"
   rds         = "rds"
