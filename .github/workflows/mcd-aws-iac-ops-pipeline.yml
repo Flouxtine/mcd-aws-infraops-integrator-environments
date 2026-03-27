@@ -324,8 +324,9 @@ jobs:
           export TERRAGRUNT_TF_BINARY=tofu
           if [[ "${{ inputs.target-folder }}" != '' ]]; then
             # 单目录：直接使用下载的 plan 文件
-            if [[ -f ".plan/plan.tfplan" ]]; then
-              terragrunt apply --terragrunt-non-interactive .plan/plan.tfplan
+            plan_abs_path="${PWD}/.plan/plan.tfplan"
+            if [[ -f "$plan_abs_path" ]]; then
+              terragrunt apply --terragrunt-non-interactive "$plan_abs_path"
             else
               echo "❌ Plan file not found in .plan/plan.tfplan"
               exit 1
@@ -339,11 +340,12 @@ jobs:
             fi
 
             for planfile in "${plan_files[@]}"; do
-              module_dir="$(dirname "$planfile")/.."
-              echo "Applying plan in ${module_dir}"
+              plan_abs_path="$(cd "$(dirname "$planfile")" && pwd)/plan.tfplan"
+              module_dir="$(dirname "$plan_abs_path")/.."
+              echo "Applying plan in ${module_dir} with plan ${plan_abs_path}"
               (
                 cd "$module_dir"
-                terragrunt apply --terragrunt-non-interactive .plan/plan.tfplan
+                terragrunt apply --terragrunt-non-interactive "$plan_abs_path"
               )
             done
           fi
