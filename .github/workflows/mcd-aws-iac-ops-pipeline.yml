@@ -115,11 +115,11 @@ jobs:
           if [[ "${{ inputs.target-folder }}" == '' ]]; then
             terragrunt plan-all -input=false -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
             # 收集所有 plan 文件，并生成 JSON 输出
-            find . -name "plan.tfplan" -exec dirname {} \; | while read -r dir; do 
-              # 提取相对路径，例如 ./dx 中的 dx
-              rel_dir=$(echo "$dir" | sed 's|^\./||')
-              mkdir -p ../plan-output/$rel_dir
-              cd "$rel_dir" && terragrunt show -json ./plan.tfplan > ../../plan-output/$rel_dir/plan.json && cd ..
+            find . -type f -path "*/.terragrunt-cache/*/plan.tfplan" | while read -r planfile; do
+              # 将缓存路径映射为模块路径，例如 ./vpc/.terragrunt-cache/.../plan.tfplan -> vpc
+              rel_dir=$(echo "$planfile" | sed -E 's|^\./||; s|/\.terragrunt-cache/.*$||')
+              mkdir -p ./plan-output/$rel_dir
+              tofu show -json "$planfile" > "./plan-output/$rel_dir/plan.json"
             done || echo "exit_code=$?" >> $GITHUB_OUTPUT
           else
             mkdir -p ./plan-output
@@ -168,21 +168,38 @@ jobs:
           rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
           if [[ "${{ inputs.target-folder }}" != '' ]]; then
             # 单目录模式
-            rclone copy ${{ env.WORKDIR }}/.terragrunt-cache${{ env.TF_WORKDIR }}/plan.tfplan s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
-            rclone copy ${{ env.WORKDIR }}/plan-output/* s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
-            rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
-            rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
+            plan_file="${{ env.WORKDIR }}/.terragrunt-cache${{ env.TF_WORKDIR }}/plan.tfplan"
+            plan_json="${{ env.WORKDIR }}/plan-output/plan.json"
+            scans_dest="s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/"
+            plans_dest="s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/"
+
+            [[ -f "$plan_file" ]] || { echo "❌ Missing plan file: $plan_file"; exit 1; }
+            [[ -f "$plan_json" ]] || { echo "❌ Missing plan json: $plan_json"; exit 1; }
+
+            rclone copy "$plan_file" "$plans_dest"
+            rclone copy "$plan_json" "$plans_dest"
+            [[ -e "${{ env.KICS_RESULT }}" ]] && rclone copy "${{ env.KICS_RESULT }}" "$scans_dest" || echo "⚠️ KICS result not found: ${{ env.KICS_RESULT }}"
+            [[ -f "${{ env.TFSEC_RESULT }}" ]] && rclone copy "${{ env.TFSEC_RESULT }}" "$scans_dest" || echo "⚠️ tfsec result not found: ${{ env.TFSEC_RESULT }}"
             echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/{plan.tfplan,plan.json}" >> $UPLOAD_SUMMARY
             echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/{tfsec-results.json,kics-results.*}" >> $UPLOAD_SUMMARY
           else
             # 多目录模式（run-all）
-            find ${{ env.WORKDIR }} -name "plan.tfplan" -exec dirname {} \; | while read -r dir; do
-              # 提取相对于 WORKDIR 的路径
-              rel_path=$(echo "$dir" | sed "s|^${{ env.WORKDIR }}/||")
-              rclone copy "$dir/plan.tfplan" s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/
-              rclone copy "${{ env.WORKDIR }}/plan-output/$rel_path/plan.json" s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/
-              rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/
-              rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/
+            find ${{ env.WORKDIR }} -type f -path "*/.terragrunt-cache/*/plan.tfplan" | while read -r planfile; do
+              # 将缓存路径映射为模块路径，例如 .../ap-east-1/vpc/.terragrunt-cache/.../plan.tfplan -> vpc
+              rel_path=$(echo "$planfile" | sed -E "s|^${{ env.WORKDIR }}/||; s|/\\.terragrunt-cache/.*$||")
+              plan_json="${{ env.WORKDIR }}/plan-output/$rel_path/plan.json"
+              plans_dest="s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/"
+              scans_dest="s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/"
+
+              if [[ ! -f "$plan_json" ]]; then
+                mkdir -p "$(dirname "$plan_json")"
+                tofu show -json "$planfile" > "$plan_json"
+              fi
+
+              rclone copy "$planfile" "$plans_dest"
+              rclone copy "$plan_json" "$plans_dest"
+              [[ -e "${{ env.KICS_RESULT }}" ]] && rclone copy "${{ env.KICS_RESULT }}" "$scans_dest" || echo "⚠️ KICS result not found: ${{ env.KICS_RESULT }}"
+              [[ -f "${{ env.TFSEC_RESULT }}" ]] && rclone copy "${{ env.TFSEC_RESULT }}" "$scans_dest" || echo "⚠️ tfsec result not found: ${{ env.TFSEC_RESULT }}"
               echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/plans/${{ github.run_id }}/{plan.tfplan,plan.json}" >> $UPLOAD_SUMMARY
               echo "- ✅ ${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/$rel_path/scans/${{ github.run_id }}/{tfsec-results.json,kics-results.*}" >> $UPLOAD_SUMMARY
             done
