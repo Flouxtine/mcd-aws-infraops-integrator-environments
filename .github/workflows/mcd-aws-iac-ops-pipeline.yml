@@ -292,7 +292,7 @@ jobs:
 
       - name: Download plan files from S3
         env:
-          BUCKET_NAME: "terraform-backend-state-ap-east-1"
+          BUCKET_NAME: "my-bucket-zhangzh-uat"
         run: |
           # 配置 rclone（使用 OIDC 角色）
           rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
