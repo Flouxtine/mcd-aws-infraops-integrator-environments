@@ -31,7 +31,6 @@ on:
           - uat
           - prod
           - test
-          - production
       target-folder:
         description: "The target directory to be run, for example: this directory dmz/infra/ap-east-1/{dx,natgw,tgw}, there are 3 folders. To run dx, fill in dx. Multiple folders are not supported. If it is empty, all directories under ap-east-1 will be run."
         required: false
