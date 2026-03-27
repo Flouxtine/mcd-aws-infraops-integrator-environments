@@ -50,7 +50,7 @@ on:
 
 env:
   TF_INPUT: false
-  WORKDIR: integrator-environments/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{inputs.aws-region}}/${{ inputs.target-folder }}
+  WORKDIR: ""
   TF_WORKDIR: ""
   AWS_REGION: ${{ inputs.aws-region }}
   AWS_IAM_ROLE: ${{ secrets.AWS_IAM_ROLE }}
@@ -77,6 +77,57 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      - name: Resolve WORKDIR
+        run: |
+          ENV_FOLDER="${{ inputs.env-folder }}"
+          PROJECT_NAME="${{ inputs.project-name }}"
+          REGION="${{ inputs.aws-region }}"
+          TARGET_FOLDER="${{ inputs.target-folder }}"
+
+          if [[ "$ENV_FOLDER" == "production" ]]; then
+            ENV_FOLDER="prod"
+          fi
+
+          resolve_candidate() {
+            local base="$1"
+            local candidate="${base}/${PROJECT_NAME}/${ENV_FOLDER}/${REGION}"
+            if [[ -n "$TARGET_FOLDER" ]]; then
+              candidate="${candidate}/${TARGET_FOLDER}"
+            fi
+            if [[ -d "$candidate" ]]; then
+              echo "$candidate"
+              return 0
+            fi
+            return 1
+          }
+
+          RESOLVED_WORKDIR=""
+          RESOLVED_WORKDIR="$(resolve_candidate "integrator-environments")" || true
+          if [[ -z "$RESOLVED_WORKDIR" ]]; then
+            RESOLVED_WORKDIR="$(resolve_candidate "integrator-other-production")" || true
+          fi
+
+          # Backward-compatibility for mistaken input:
+          # project-name=integrator-other-production should be dmz under integrator-other-production.
+          if [[ -z "$RESOLVED_WORKDIR" && "$PROJECT_NAME" == "integrator-other-production" ]]; then
+            fallback="integrator-other-production/dmz/${ENV_FOLDER}/${REGION}"
+            if [[ -n "$TARGET_FOLDER" ]]; then
+              fallback="${fallback}/${TARGET_FOLDER}"
+            fi
+            if [[ -d "$fallback" ]]; then
+              RESOLVED_WORKDIR="$fallback"
+              echo "⚠️ project-name=integrator-other-production is deprecated; using dmz fallback."
+            fi
+          fi
+
+          if [[ -z "$RESOLVED_WORKDIR" ]]; then
+            echo "❌ Unable to resolve WORKDIR for project=${PROJECT_NAME}, env=${ENV_FOLDER}, region=${REGION}, target=${TARGET_FOLDER}"
+            exit 1
+          fi
+
+          echo "WORKDIR=$RESOLVED_WORKDIR" >> "$GITHUB_ENV"
+          echo "✅ Resolved WORKDIR: $RESOLVED_WORKDIR"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -263,6 +314,55 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      - name: Resolve WORKDIR
+        run: |
+          ENV_FOLDER="${{ inputs.env-folder }}"
+          PROJECT_NAME="${{ inputs.project-name }}"
+          REGION="${{ inputs.aws-region }}"
+          TARGET_FOLDER="${{ inputs.target-folder }}"
+
+          if [[ "$ENV_FOLDER" == "production" ]]; then
+            ENV_FOLDER="prod"
+          fi
+
+          resolve_candidate() {
+            local base="$1"
+            local candidate="${base}/${PROJECT_NAME}/${ENV_FOLDER}/${REGION}"
+            if [[ -n "$TARGET_FOLDER" ]]; then
+              candidate="${candidate}/${TARGET_FOLDER}"
+            fi
+            if [[ -d "$candidate" ]]; then
+              echo "$candidate"
+              return 0
+            fi
+            return 1
+          }
+
+          RESOLVED_WORKDIR=""
+          RESOLVED_WORKDIR="$(resolve_candidate "integrator-environments")" || true
+          if [[ -z "$RESOLVED_WORKDIR" ]]; then
+            RESOLVED_WORKDIR="$(resolve_candidate "integrator-other-production")" || true
+          fi
+
+          if [[ -z "$RESOLVED_WORKDIR" && "$PROJECT_NAME" == "integrator-other-production" ]]; then
+            fallback="integrator-other-production/dmz/${ENV_FOLDER}/${REGION}"
+            if [[ -n "$TARGET_FOLDER" ]]; then
+              fallback="${fallback}/${TARGET_FOLDER}"
+            fi
+            if [[ -d "$fallback" ]]; then
+              RESOLVED_WORKDIR="$fallback"
+              echo "⚠️ project-name=integrator-other-production is deprecated; using dmz fallback."
+            fi
+          fi
+
+          if [[ -z "$RESOLVED_WORKDIR" ]]; then
+            echo "❌ Unable to resolve WORKDIR for project=${PROJECT_NAME}, env=${ENV_FOLDER}, region=${REGION}, target=${TARGET_FOLDER}"
+            exit 1
+          fi
+
+          echo "WORKDIR=$RESOLVED_WORKDIR" >> "$GITHUB_ENV"
+          echo "✅ Resolved WORKDIR: $RESOLVED_WORKDIR"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
