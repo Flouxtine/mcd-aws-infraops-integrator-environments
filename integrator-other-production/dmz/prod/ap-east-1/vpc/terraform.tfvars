@@ -51,38 +51,7 @@ create_aws_subnet_config = {
       Tier = "Private"
     }
   }
-  aws-prod-dmz-vsw-pri-1a-02 = {
-    create_aws_subnet = true
-    vpc_id_depend_key = "aws-prod-dmz-vpc-01"
-    cidr_block        = "192.168.5.0/26"
-    availability_zone = "ap-east-1a"
-    tags = {
-      Name = "aws-prod-dmz-vsw-pri-1a-02"
-      Tier = "Private"
-    }
-  }
-  aws-prod-dmz-vsw-pri-1b-02 = {
-    create_aws_subnet = true
-    vpc_id_depend_key = "aws-prod-dmz-vpc-01"
-    cidr_block        = "192.168.5.64/26"
-    availability_zone = "ap-east-1b"
-    tags = {
-      Name = "aws-prod-dmz-vsw-pri-1b-02"
-      Tier = "Private"
-    }
-  }
-  aws-prod-dmz-vsw-pri-1c-02 = {
-    create_aws_subnet = true
-    vpc_id_depend_key = "aws-prod-dmz-vpc-01"
-    cidr_block        = "192.168.5.128/26"
-    availability_zone = "ap-east-1c"
-    tags = {
-      Name = "aws-prod-dmz-vsw-pri-1c-02"
-      Tier = "Private"
-    }
-  }
 }
-
 create_aws_route_table_config = {
   aws-prod-dmz-rt-pub-01 = {
     create_aws_route_table = true
@@ -141,24 +110,6 @@ create_aws_route_table_association_config = {
     create_aws_route_table_association = true
     route_table_id_depend_key          = "aws-prod-dmz-rt-pri-02"
     subnet_id_depend_key               = "aws-prod-dmz-vsw-pri-1c-01"
-    region                             = "ap-east-1"
-  }
-  assoc-pri-1a-02 = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "aws-prod-dmz-rt-pri-03"
-    subnet_id_depend_key               = "aws-prod-dmz-vsw-pri-1a-02"
-    region                             = "ap-east-1"
-  }
-  assoc-pri-1b-02 = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "aws-prod-dmz-rt-pri-03"
-    subnet_id_depend_key               = "aws-prod-dmz-vsw-pri-1b-02"
-    region                             = "ap-east-1"
-  }
-  assoc-pri-1c-02 = {
-    create_aws_route_table_association = true
-    route_table_id_depend_key          = "aws-prod-dmz-rt-pri-03"
-    subnet_id_depend_key               = "aws-prod-dmz-vsw-pri-1c-02"
     region                             = "ap-east-1"
   }
 }
