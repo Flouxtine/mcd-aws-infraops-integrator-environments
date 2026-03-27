@@ -49,11 +49,14 @@ on:
 env:
   TF_INPUT: false
   WORKDIR: integrator-environments/${{ inputs.project-name }}/${{ inputs.env-folder }}/${{inputs.aws-region}}/${{ inputs.target-folder }}
+  TF_WORKDIR: ""
   AWS_REGION: ${{ inputs.aws-region }}
+  AWS_IAM_ROLE: ${{ secrets.AWS_IAM_ROLE }}
 
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   GH_PAT: ${{ secrets.GH_PAT }}
+  BUCKET_NAME: "my-bucket-zhangzh-uat"
   TERRAGRUNT_TFPATH: /usr/local/bin/tofu
   OPENTOFU_VERSION: "1.6.2"
   TERRAGRUNT_VERSION: "0.54.8"
@@ -127,7 +130,7 @@ jobs:
               terragrunt plan -input=false $target -out=./plan.tfplan -detailed-exitcode || echo "exit_code=$?" >> $GITHUB_OUTPUT
             fi
             # 记录工作目录（用于后续 S3 路径）
-            echo tf_workdir=$(terragrunt terragrunt-info | grep WorkingDir | cut -d '"' -f 4 | awk -F'/.terragrunt-cache' '{print $2}') >> $GITHUB_ENV
+            echo TF_WORKDIR=$(terragrunt terragrunt-info | grep WorkingDir | cut -d '"' -f 4 | awk -F'/.terragrunt-cache' '{print $2}') >> $GITHUB_ENV
             terragrunt show -json ./plan.tfplan > ./plan-output/plan.json
           fi
 
@@ -152,7 +155,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          BUCKET_NAME: "my-bucket-zhangzh-uat"
+          BUCKET_NAME: ${{ env.BUCKET_NAME }}
         run: |
           UPLOAD_SUMMARY=$(mktemp)
           START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
@@ -165,7 +168,7 @@ jobs:
           rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
           if [[ "${{ inputs.target-folder }}" != '' ]]; then
             # 单目录模式
-            rclone copy ${{ env.WORKDIR }}/.terragrunt-cache${{ env.tf_workdir }}/plan.tfplan s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
+            rclone copy ${{ env.WORKDIR }}/.terragrunt-cache${{ env.TF_WORKDIR }}/plan.tfplan s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
             rclone copy ${{ env.WORKDIR }}/plan-output/* s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/plans/${{ github.run_id }}/
             rclone copy ${{ env.KICS_RESULT }}/ s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
             rclone copy ${{ env.TFSEC_RESULT }} s3_static:${{ env.BUCKET_NAME }}/pipeline-artifacts/${{ env.WORKDIR }}/scans/${{ github.run_id }}/
@@ -292,7 +295,7 @@ jobs:
 
       - name: Download plan files from S3
         env:
-          BUCKET_NAME: "my-bucket-zhangzh-uat"
+          BUCKET_NAME: ${{ env.BUCKET_NAME }}
         run: |
           # 配置 rclone（使用 OIDC 角色）
           rclone config create s3_static s3 provider=AWS region=$AWS_REGION env_auth=true acl=private location_constraint=$AWS_REGION sse_kms_key_id=${{ secrets.S3_KMS_ARN }} server_side_encryption=aws:kms
@@ -322,18 +325,25 @@ jobs:
           if [[ "${{ inputs.target-folder }}" != '' ]]; then
             # 单目录：直接使用下载的 plan 文件
             if [[ -f ".plan/plan.tfplan" ]]; then
-              terragrunt apply .plan/plan.tfplan
+              terragrunt apply --terragrunt-non-interactive .plan/plan.tfplan
             else
               echo "❌ Plan file not found in .plan/plan.tfplan"
               exit 1
             fi
           else
             # 多目录：遍历每个子目录，找到 plan 文件并 apply
-            find . -type f -path "*/.plan/plan.tfplan" | while read -r planfile; do
-              plan_dir=$(dirname "$planfile")
-              cd "$plan_dir/.."   # 进入模块根目录（即包含 terragrunt.hcl 的目录）
-              echo "Applying plan from $planfile in $(pwd)"
-              terragrunt apply "$planfile"
-              cd - > /dev/null
+            mapfile -t plan_files < <(find . -type f -path "*/.plan/plan.tfplan")
+            if [[ ${#plan_files[@]} -eq 0 ]]; then
+              echo "❌ No plan files found under ${PWD}"
+              exit 1
+            fi
+
+            for planfile in "${plan_files[@]}"; do
+              module_dir="$(dirname "$planfile")/.."
+              echo "Applying plan in ${module_dir}"
+              (
+                cd "$module_dir"
+                terragrunt apply --terragrunt-non-interactive .plan/plan.tfplan
+              )
             done
           fi
