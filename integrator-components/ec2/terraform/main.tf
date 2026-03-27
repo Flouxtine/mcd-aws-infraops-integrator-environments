@@ -25,7 +25,7 @@ data "aws_security_groups" "by_names" {
 module "ec2" {
 
   for_each = var.create_ec2_config
-  source   = "git::ssh://github-flouxtine:Flouxtine/aws-terraform-base-module.git//terraform-aws-ec2?ref=main"
+  source   = "git::https://github.com/Flouxtine/aws-terraform-base-module.git//terraform-aws-ec2?ref=main"
 
   # General Configuration
   create = try(each.value.create, true)
